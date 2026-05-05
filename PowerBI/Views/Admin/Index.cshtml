@@ -1,0 +1,105 @@
+@model List<PowerBI.Models.User>
+
+@{
+    ViewData["Title"] = "Admin Dashboard";
+}
+
+<div class="row g-4 mb-5">
+    <div class="col-md-4">
+        <div class="glass-card text-center py-4">
+            <i class="bi bi-people fs-1 text-primary mb-2"></i>
+            <h3 class="fw-bold">@ViewBag.UserCount</h3>
+            <p class="text-muted mb-0">Total Users</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="glass-card text-center py-4">
+            <i class="bi bi-folder2-open fs-1 text-accent mb-2"></i>
+            <h3 class="fw-bold">@ViewBag.WorkspaceCount</h3>
+            <p class="text-muted mb-0">Workspaces</p>
+        </div>
+    </div>
+    <div class="col-md-4">
+        <div class="glass-card text-center py-4">
+            <i class="bi bi-file-earmark-bar-graph fs-1 text-warning mb-2"></i>
+            <h3 class="fw-bold">@ViewBag.ReportCount</h3>
+            <p class="text-muted mb-0">Total Reports</p>
+        </div>
+    </div>
+</div>
+
+<div class="glass-card mb-5">
+    <div class="d-flex justify-content-between align-items-center mb-4">
+        <h4 class="fw-bold mb-0">User Management</h4>
+        <button class="btn btn-primary btn-sm" data-bs-toggle="modal" data-bs-target="#addUserModal">
+            <i class="bi bi-plus-lg me-2"></i>Add User
+        </button>
+    </div>
+    <div class="table-responsive">
+        <table class="table table-dark table-hover">
+            <thead>
+                <tr>
+                    <th>ID</th>
+                    <th>Name</th>
+                    <th>Email</th>
+                    <th>Role</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                @foreach (var user in Model)
+                {
+                    <tr>
+                        <td>@user.Id</td>
+                        <td>@user.Name</td>
+                        <td>@user.Email</td>
+                        <td><span class="badge bg-secondary">@user.Role</span></td>
+                        <td>
+                            <a asp-action="DeleteUser" asp-route-id="@user.Id" class="text-danger" onclick="return confirm('Delete user?')">
+                                <i class="bi bi-trash"></i>
+                            </a>
+                        </td>
+                    </tr>
+                }
+            </tbody>
+        </table>
+    </div>
+</div>
+
+<!-- Modal -->
+<div class="modal fade" id="addUserModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content bg-dark text-white border-secondary">
+            <div class="modal-header border-secondary">
+                <h5 class="modal-title">Add New User</h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <form asp-action="CreateUser" method="post">
+                <div class="modal-body">
+                    <div class="mb-3">
+                        <label class="form-label">Name</label>
+                        <input type="text" name="Name" class="form-control bg-dark text-white border-secondary" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Email</label>
+                        <input type="email" name="Email" class="form-control bg-dark text-white border-secondary" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Password</label>
+                        <input type="password" name="Password" class="form-control bg-dark text-white border-secondary" required />
+                    </div>
+                    <div class="mb-3">
+                        <label class="form-label">Role</label>
+                        <select name="Role" class="form-select bg-dark text-white border-secondary">
+                            <option value="User">User</option>
+                            <option value="Admin">Admin</option>
+                        </select>
+                    </div>
+                </div>
+                <div class="modal-footer border-secondary">
+                    <button type="submit" class="btn btn-primary">Create User</button>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>

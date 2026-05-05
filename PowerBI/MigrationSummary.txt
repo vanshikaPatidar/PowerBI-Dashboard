@@ -1,0 +1,39 @@
+# Power BI Authentication Migration Summary
+## Transition to Service Principal (App-Only Auth)
+
+### 1. Authentication Logic Update
+- **File**: `Services/PowerBIAuthService.cs`
+- **Change**: Replaced `PublicClientApplicationBuilder` (Username/Password flow) with `ConfidentialClientApplicationBuilder` (Client Secret flow).
+- **Method**: Changed `AcquireTokenByUsernamePassword` to `AcquireTokenForClient`.
+- **Impact**: The application now authenticates as its own identity (Azure App Registration) instead of inheriting a specific user's permissions.
+
+### 2. Configuration Cleanup
+- **File**: `appsettings.json`
+- **Change**: Removed `Username` and `Password` fields from the `PowerBI` configuration section.
+- **Impact**: Prevents accidental fallback to Master User authentication and ensures security by relying solely on the Service Principal's `ClientSecret`.
+
+### 3. Service Layer Compatibility
+- **File**: `Services/PowerBIService.cs`
+- **Observation**: All existing methods (Workspace creation, Report upload, PDF Export, Embed Token generation) are compatible with Service Principal authentication, provided the Service Principal has been granted appropriate permissions in the Power BI Tenant and Workspaces.
+
+### 4. Required Next Steps (Action Items for Admin)
+To ensure the application continues to function correctly with Service Principal, please verify the following in the Power BI Admin Portal:
+1.  **Tenant Settings**: Ensure "Allow service principals to use Power BI APIs" is **Enabled** for the specific App Registration.
+2.  **Workspace Access**: The Service Principal (App Name) must be added as an **Admin** or **Member** to every Power BI Workspace the application needs to interact with.
+3.  **Embed Tokens**: Service Principal authentication for embedding is the industry standard and provides better security and scalability than Master User accounts.
+
+---
+Migration Status: COMPLETE
+Auth Flow: MSAL Confidential Client (Client Secret)
+Target Identity: Service Principal
+
+## 🛠️ Troubleshooting & Why You Might Not See Workspaces
+1. **Visibility Issue**: When a Service Principal (SP) creates a workspace, it is the **only admin**. You (as a human user) will NOT see it in your Power BI portal until the SP adds you as an admin.
+2. **Sync Failing?**: If the list in the app is not updating, check the Console Output. A common error is `403 Forbidden` if the SP is not allowed to use APIs in the Power BI Tenant settings.
+3. **Upload Failing?**: 
+   - Ensure the SP is an **Admin** of the target workspace.
+   - For **Paginated Reports (.rdl)**, the workspace MUST be on **Premium/Fabric capacity**. SPs cannot upload .rdl files to shared capacity.
+4. **Tenant Settings**: Ask your Power BI Admin to enable:
+   - "Allow service principals to use Power BI APIs"
+   - "Service principals can create and use profiles" (if applicable)
+   - "Allow service principals to use read-only admin APIs" (if syncing all workspaces)

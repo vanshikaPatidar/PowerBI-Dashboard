@@ -1,0 +1,19 @@
+{
+  "Logging": {
+    "LogLevel": {
+      "Default": "Information",
+      "Microsoft.AspNetCore": "Warning"
+    }
+  },
+  "AllowedHosts": "*",
+  "PowerBI": {
+    "TenantId": "YOUR_TENANT_ID",
+    "ClientId": "YOUR_CLIENT_ID",
+    "ClientSecret": "YOUR_CLIENT_SECRET",
+    "AdminEmail": "YOUR_ADMIN_EMAIL",
+    "CapacityId": ""
+  },
+  "ConnectionStrings": {
+    "DefaultConnection": "YOUR_CONNECTION_STRING"
+  }
+}

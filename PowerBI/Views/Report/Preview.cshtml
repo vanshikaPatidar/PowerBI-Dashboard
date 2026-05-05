@@ -1,0 +1,318 @@
+@model PowerBI.Models.ReportEmbedConfig
+
+@{
+    ViewData["Title"] = "Report Preview";
+}
+
+<div class="row mb-4">
+    <div class="col">
+        <h2 class="fw-bold">@Model.ReportName</h2>
+        <p class="text-muted">Power BI Embedded Preview</p>
+    </div>
+    <div class="col-auto">
+        <button onclick="reloadReport()" class="btn btn-outline">
+            <i class="bi bi-arrow-clockwise me-2"></i>Refresh
+        </button>
+    </div>
+</div>
+
+<div class="d-flex" style="gap: 32px; align-items: flex-start; width: 100%;">
+    <!-- Sidebar Filters - Forced Wide Layout -->
+    <div class="flex-shrink-0" style="width: 400px; min-width: 400px; max-width: 400px;">
+        <div class="glass-card shadow-sm p-4" style="position: sticky; top: 20px; border: 1px solid #dee2e6;">
+            <div class="d-flex justify-content-between align-items-center mb-4">
+                <h4 class="fw-bold mb-0 text-dark"><i class="bi bi-filter-right me-2 text-primary"></i>Filters</h4>
+                <button onclick="loadDropdownValues()" class="btn btn-sm btn-light border" title="Refresh all">
+                    <i class="bi bi-arrow-clockwise"></i>
+                </button>
+            </div>
+
+            <div id="filterInputs">
+                <div id="dynamicFilters" class="quick-filters" style="max-height: 600px; overflow-y: auto; overflow-x: hidden; padding-right: 5px;">
+                    <div class="text-center py-5">
+                        <div class="spinner-border spinner-border-sm text-primary" role="status"></div>
+                        <p class="small text-muted mt-2">Connecting to report schema...</p>
+                    </div>
+                </div>
+            </div>
+
+            <div class="mt-2 text-center">
+                <button onclick="forceResetSchema()" class="btn btn-link extra-small text-muted text-decoration-none">
+                    <i class="bi bi-shield-lock-fill me-1"></i> Force Discover (Premium Only)
+                </button>
+                <br/>
+                <button onclick="$('#manualFilterForm').toggle()" class="btn btn-link extra-small text-primary text-decoration-none">
+                    <i class="bi bi-plus-circle-fill me-1"></i> Add Filter Manually (Pro)
+                </button>
+            </div>
+
+            <div id="manualFilterForm" style="display:none;" class="mt-3 p-3 border rounded bg-light">
+                <p class="extra-small fw-bold mb-2">Add New Filter Mapping</p>
+                <input type="text" id="mDisplayName" class="form-control form-control-sm mb-2" placeholder="Display Name (e.g. Region)">
+                <input type="text" id="mTableName" class="form-control form-control-sm mb-2" placeholder="Table Name in PBI">
+                <input type="text" id="mColumnName" class="form-control form-control-sm mb-2" placeholder="Column Name in PBI">
+                <button onclick="saveManualFilter()" class="btn btn-sm btn-primary w-100">Save Filter</button>
+            </div>
+
+            <div id="filterActions" style="display:none;" class="mt-4 pt-3 border-top">
+                <button class="btn btn-primary w-100 mb-2 py-2 fw-bold" onclick="applyFilters()">
+                    Apply Filters
+                </button>
+                <button class="btn btn-link btn-sm w-100 text-muted text-decoration-none" onclick="clearFilters()">
+                    Reset All
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Main Report Area -->
+    <div class="flex-grow-1" style="min-width: 0;">
+        <div class="glass-card p-0 overflow-hidden shadow border-0" style="border-radius: 1.25rem;">
+            <div id="reportContainer" class="report-container" style="height: 850px; width: 100%;"></div>
+        </div>
+    </div>
+</div>
+
+@section Scripts {
+    <script>
+        let report;
+        const reportType = '@Model.ReportType';
+        
+        const config = {
+            type: 'report',
+            tokenType: 1, // Embed
+            accessToken: '@Model.EmbedToken',
+            embedUrl: '@Model.EmbedUrl',
+            id: '@Model.ReportId',
+            settings: {
+                panes: {
+                    filters: { visible: false },
+                    pageNavigation: { visible: true }
+                }
+            }
+        };
+
+        $(document).ready(function () {
+            console.log("[EMBED] Initializing for type:", reportType);
+            const container = $('#reportContainer')[0];
+            report = powerbi.embed(container, config);
+            
+            // Initial load
+            loadDropdownValues();
+        });
+
+        async function loadDropdownValues() {
+            const reportId = '@Model.LocalReportId';
+            const datasetId = '@Model.DatasetId';
+            const isRdl = reportType === 'RDL' || reportType === 'Paginated';
+            const container = $('#dynamicFilters');
+            
+            console.log("[UI] Fetching filter metadata for Report:", reportId);
+
+            try {
+                const response = await fetch(`/Report/GetFilters?reportId=${reportId}`);
+                if (!response.ok) throw new Error("Failed to fetch filters");
+                
+                const filters = await response.json();
+                console.log("[UI] Found filters:", filters.length);
+
+                container.empty();
+
+                if (filters.length === 0) {
+                    container.html('<div class="text-center py-3"><p class="extra-small text-muted mb-0">No parameters discovered yet.</p><p class="extra-small text-primary cursor-pointer" onclick="forceResetSchema()">Click "Force Rediscover" to scan.</p></div>');
+                    $('#filterActions').hide();
+                    return;
+                }
+
+                filters.forEach(f => {
+                    const html = `
+                        <div class="mb-4 filter-item p-3 rounded shadow-sm border bg-white animate-fade-in">
+                            <div class="d-flex justify-content-between align-items-center mb-3">
+                                <label class="form-label small fw-bold text-dark mb-0">${f.displayName}</label>
+                                <span class="badge bg-light text-muted fw-normal" style="font-size: 0.65rem;">${f.tableName === 'RDL_PARAMETER' ? 'PARAM' : f.tableName}</span>
+                            </div>
+                            <div class="input-group">
+                                <select class="form-select bg-light border-0 filter-field py-2" 
+                                        data-table="${f.tableName}" 
+                                        data-column="${f.columnName}" 
+                                        style="font-size: 0.9rem;">
+                                    <option value="">Loading values...</option>
+                                </select>
+                                <button class="btn btn-white border border-start-0 text-primary" onclick="loadSingleDropdown('${f.columnName}')">
+                                    <i class="bi bi-arrow-clockwise"></i>
+                                </button>
+                            </div>
+                        </div>`;
+                    container.append(html);
+                });
+
+                $('#filterActions').show();
+
+                // Now load values for each
+                $('.filter-field').each(async function() {
+                    await loadSelectValues($(this));
+                });
+
+            } catch (err) {
+                console.error("[UI] Metadata Load Error:", err);
+                container.html('<p class="text-danger extra-small text-center">Connection error. Try refreshing.</p>');
+            }
+        }
+
+        async function loadSingleDropdown(columnName) {
+            const select = $(`.filter-field[data-column="${columnName}"]`);
+            await loadSelectValues(select);
+        }
+
+        async function loadSelectValues(select) {
+            const datasetId = '@Model.DatasetId';
+            const reportId = '@Model.ReportId';
+            const column = select.data('column');
+            const table = select.data('table');
+            
+            if (!table || !column) return;
+
+            try {
+                const wsId = '@Model.WorkspaceId';
+                const repGuid = config.id;
+
+                const url = `/Report/GetFilterValues?datasetId=${datasetId}&table=${encodeURIComponent(table)}&column=${encodeURIComponent(column)}&reportId=${repGuid}&workspaceId=${wsId}`;
+                const response = await fetch(url);
+                const values = await response.json();
+
+                let options = `<option value="">-- All --</option>`;
+                if (values && values.length > 0) {
+                    values.forEach(v => {
+                        options += `<option value="${v}">${v}</option>`;
+                    });
+                } else {
+                    options = `<option value="">No suggestions</option>`;
+                }
+                select.html(options);
+            } catch (err) {
+                console.error(`Error loading values for ${column}:`, err);
+                select.html(`<option value="">Error</option>`);
+            }
+        }
+
+        async function applyFilters() {
+            if (!report) return;
+            const btn = event.target;
+            const originalText = btn.innerText;
+            btn.innerText = "Applying...";
+            btn.disabled = true;
+
+            try {
+                const isRdl = reportType === 'RDL' || reportType === 'Paginated';
+                
+                if (isRdl) {
+                    const parameters = [];
+                    $('.filter-field').each(function() {
+                        const val = $(this).val();
+                        const paramName = $(this).data('column');
+                        if (val) {
+                            parameters.push({ name: paramName, value: val });
+                        }
+                    });
+
+                    console.log("[EMBED] Applying RDL Parameters:", parameters);
+                    await report.setParameters(parameters);
+                } 
+                else {
+                    const filters = [];
+                    $('.filter-field').each(function() {
+                        const val = $(this).val();
+                        const table = $(this).data('table');
+                        const column = $(this).data('column');
+                        
+                        if (val && table) {
+                            filters.push({
+                                $schema: "http://powerbi.com/product/schema#basic",
+                                target: { table: table, column: column },
+                                operator: "In",
+                                values: [val]
+                            });
+                        }
+                    });
+
+                    if (filters.length === 0) {
+                        await report.removeFilters();
+                    } else {
+                        await report.setFilters(filters);
+                    }
+                }
+            } catch (err) {
+                console.error("Filter Error:", err);
+                alert("Filter failed. Verify names in Report Builder.");
+            } finally {
+                btn.innerText = originalText;
+                btn.disabled = false;
+            }
+        }
+
+        async function clearFilters() {
+            if (!report) return;
+            try {
+                $('input, select').val('');
+                if (reportType === 'RDL' || reportType === 'Paginated') {
+                    report.reload();
+                } else {
+                    await report.removeFilters();
+                }
+            } catch (err) {
+                console.error("Clear Error:", err);
+            }
+        }
+
+        async function forceResetSchema() {
+            if (!confirm("Discovery will scan the RDL file/Dataset for parameters. Continue?")) return;
+
+            const reportId = '@Model.LocalReportId';
+            const container = $('#dynamicFilters');
+            container.html('<div class="text-center py-5"><div class="spinner-border spinner-border-sm text-primary" role="status"></div><p class="small text-muted mt-2">Scanning schema...</p></div>');
+            
+            try {
+                const response = await fetch(`/Report/ResetFilters?reportId=${reportId}`, { method: 'POST' });
+                const result = await response.json();
+                
+                if (response.ok) {
+                    console.log("[UI] Discovery Success:", result.message);
+                    await loadDropdownValues();
+                } else {
+                    throw new Error(result.message || "Discovery failed");
+                }
+            } catch (err) {
+                console.error("[UI] Discovery Error:", err);
+                container.html(`<div class="alert alert-danger extra-small p-2">Discovery failed: ${err.message}</div><button class="btn btn-sm btn-link" onclick="loadDropdownValues()">Try Again</button>`);
+            }
+        }
+        
+        function reloadReport() {
+            if (report) report.reload();
+        }
+        async function saveManualFilter() {
+            const reportId = '@Model.LocalReportId';
+            const displayName = $('#mDisplayName').val();
+            const tableName = $('#mTableName').val();
+            const columnName = $('#mColumnName').val();
+
+            if (!tableName || !columnName) {
+                alert("Table and Column names are required!");
+                return;
+            }
+
+            try {
+                const response = await fetch(`/Report/SaveManualFilter?reportId=${reportId}&displayName=${encodeURIComponent(displayName)}&tableName=${encodeURIComponent(tableName)}&columnName=${encodeURIComponent(columnName)}`, { method: 'POST' });
+                if (response.ok) {
+                    $('#manualFilterForm').hide();
+                    $('#mDisplayName, #mTableName, #mColumnName').val('');
+                    await loadDropdownValues();
+                } else {
+                    alert("Error saving filter.");
+                }
+            } catch (err) {
+                console.error(err);
+            }
+        }
+    </script>
+}
